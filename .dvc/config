@@ -1,0 +1,4 @@
+[core]
+    remote = dv_storage
+['remote "dv_storage"']
+    url = ../UsersUserDesktopoil_2dv_storage

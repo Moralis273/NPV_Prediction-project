@@ -1,8 +1,32 @@
-model.pkl
-encoder.pkl
-data.xlsx
+# Данные
+data/processed/
+data/raw/*.xlsx
+!data/raw/data.xlsx.dvc
+
+# Модели
+models/
+!models/*.dvc
+
+# DVC
+.dvc/
+
+# Python
 __pycache__/
-# Виртуальное окружение
+*.pyc
+*.pyo
+*.pyd
+.Python
 oil/
-env/
-.env/
+venv/
+.oil/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log

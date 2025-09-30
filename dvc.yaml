@@ -1,0 +1,67 @@
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+      - data/raw/data.xlsx
+      - src/preprocess.py
+      - params.yaml
+    params:
+      - data.raw_path
+      - data.processed_path
+      - features.target
+      - features.drop_columns
+      - features.categorical_columns
+      - preprocessing.test_size
+      - preprocessing.random_state
+    outs:
+      - data/processed/train_test.joblib
+      - models/encoder.joblib
+      - models/feature_columns.joblib
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - data/processed/train_test.joblib
+      - src/train.py
+      - params.yaml
+    params:
+      - model.name
+      - model.hyperparameters
+      - training.cv_folds
+      - training.scoring
+    outs:
+      - models/model.joblib
+    metrics:
+      - models/metrics.json:
+          cache: false
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - data/processed/train_test.joblib
+      - models/model.joblib
+      - src/evaluate.py
+    metrics:
+      - models/evaluation.json:
+          cache: false
+
+  generate_report:
+    cmd: python src/generate_report.py
+    deps:
+      - models/metrics.json
+      - models/evaluation.json
+      - params.yaml
+      - src/generate_report.py
+    outs:
+      - reports/model_report.json
+
+  register:
+    cmd: python src/register_model.py
+    deps:
+      - src/register_model.py
+      - params.yaml
+    params:
+      - model.name
+    metrics:
+      - registry/model_info.json:
+          cache: false

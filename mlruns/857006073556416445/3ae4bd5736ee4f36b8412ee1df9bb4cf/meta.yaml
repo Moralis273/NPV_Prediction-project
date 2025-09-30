@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/User/Desktop/oil_2/mlruns/857006073556416445/3ae4bd5736ee4f36b8412ee1df9bb4cf/artifacts
+end_time: 1759209484538
+entry_point_name: ''
+experiment_id: '857006073556416445'
+lifecycle_stage: active
+run_id: 3ae4bd5736ee4f36b8412ee1df9bb4cf
+run_name: rambunctious-yak-596
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759209480028
+status: 3
+tags: []
+user_id: User

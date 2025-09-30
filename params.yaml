@@ -1,0 +1,24 @@
+data:
+  raw_path: "data/raw/data.xlsx"
+  processed_path: "data/processed/train_test.joblib"
+
+features:
+  target: "NPV"
+  drop_columns: ["cond rate", "gas rate", "sum cond", "sum gas"]
+  categorical_columns: ["GS"]
+
+preprocessing:
+  test_size: 0.2
+  random_state: 42
+
+model:
+  name: "xgboost"
+  hyperparameters:
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+
+training:
+  cv_folds: 5
+  scoring: "r2"

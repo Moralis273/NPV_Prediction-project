@@ -1,0 +1,78 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+    - path: data/raw/data.xlsx
+      hash: md5
+      md5: 5878791f8961af5143d726b8a2964c0f
+      size: 1055731
+    - path: params.yaml
+      hash: md5
+      md5: 6cdfb6ac6bbd17e85584968627e7334d
+      size: 457
+    - path: src/preprocess.py
+      hash: md5
+      md5: edb5325804150f45627fe4df806d0d74
+      size: 2041
+    params:
+      params.yaml:
+        data.processed_path: data/processed/train_test.joblib
+        data.raw_path: data/raw/data.xlsx
+        features.categorical_columns:
+        - GS
+        features.drop_columns:
+        - cond rate
+        - gas rate
+        - sum cond
+        - sum gas
+        features.target: NPV
+        preprocessing.random_state: 42
+        preprocessing.test_size: 0.2
+    outs:
+    - path: data/processed/train_test.joblib
+      hash: md5
+      md5: 7529128e1d84fb367ab8192fbea58247
+      size: 928180
+    - path: models/encoder.joblib
+      hash: md5
+      md5: 97a5994e25d699c849c80f9c73a8db1b
+      size: 1389
+    - path: models/feature_columns.joblib
+      hash: md5
+      md5: bbb3a22cce65e92d97561c19fee2f343
+      size: 109
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/processed/train_test.joblib
+      hash: md5
+      md5: 7529128e1d84fb367ab8192fbea58247
+      size: 928180
+    - path: params.yaml
+      hash: md5
+      md5: 6cdfb6ac6bbd17e85584968627e7334d
+      size: 457
+    - path: src/train.py
+      hash: md5
+      md5: 17df8e596ca8f2f2efb84f769919b15b
+      size: 2413
+    params:
+      params.yaml:
+        model.hyperparameters:
+          n_estimators: 100
+          max_depth: 6
+          learning_rate: 0.1
+          subsample: 0.8
+        model.name: xgboost
+        training.cv_folds: 5
+        training.scoring: r2
+    outs:
+    - path: models/metrics.json
+      hash: md5
+      md5: dd5792c2472797a546eb2ceda7364978
+      size: 163
+    - path: models/model.joblib
+      hash: md5
+      md5: 9b61437fe31e085811cdc1771d2af651
+      size: 471151
