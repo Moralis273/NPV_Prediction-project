@@ -1,0 +1,8 @@
+model.pkl
+encoder.pkl
+data.xlsx
+__pycache__/
+# Виртуальное окружение
+oil/
+env/
+.env/

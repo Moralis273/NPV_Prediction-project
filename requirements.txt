@@ -1,0 +1,13 @@
+pandas==2.0.3
+scikit-learn==1.3.0
+xgboost==2.0.0
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+matplotlib==3.8.0
+seaborn==0.13.0
+openpyxl==3.1.2
+joblib==1.3.2
+gunicorn==21.2.0
+streamlit==1.28.0  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+requests==2.31.0   # ← ДОБАВЬТЕ ЭТУ СТРОКУ
