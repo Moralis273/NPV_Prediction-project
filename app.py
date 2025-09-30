@@ -76,4 +76,24 @@ async def predict(data: InputData):
         logger.error(f"Ошибка предсказания: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Ошибка предсказания: {str(e)}")
 
-# Остальные endpoints остаются без изменений...
+@app.get("/model_info")
+async def model_info():
+    """Информация о загруженной модели"""
+    try:
+        features = []
+        if hasattr(model, 'feature_names_in_'):
+            features = model.feature_names_in_.tolist()
+        elif hasattr(model, 'get_booster'):
+            features = model.get_booster().feature_names
+        
+        return {
+            "model_type": type(model).__name__,
+            "n_features": len(features),
+            "features": features
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

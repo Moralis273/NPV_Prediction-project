@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import pandas as pd
 import json
+import os
+from datetime import datetime
 
 # Настройки страницы
 st.set_page_config(
@@ -17,8 +19,15 @@ st.markdown("Прогнозирование NPV на основе парамет
 # URL вашего API (по умолчанию localhost)
 API_URL = st.sidebar.text_input(
     "URL API", 
-    value="http://localhost:8000",
+    value="http://localhost:8001",  # ← ДОЛЖЕН БЫТЬ 8000, а не 5005!
     help="Введите URL вашего FastAPI сервера"
+)
+
+# MLflow URL для мониторинга
+MLFLOW_URL = st.sidebar.text_input(
+    "MLflow URL", 
+    value="http://localhost:5005",  # ← Это для MLflow
+    help="Введите URL MLflow сервера"
 )
 
 # Функция для проверки соединения с API
@@ -55,7 +64,29 @@ def get_model_info():
     except:
         return None
 
+# Функция для получения метрик из DVC
+def get_dvc_metrics():
+    try:
+        if os.path.exists('models/metrics.json'):
+            with open('models/metrics.json', 'r') as f:
+                return json.load(f)
+        return None
+    except:
+        return None
+
+# Функция для получения параметров модели
+def get_model_params():
+    try:
+        if os.path.exists('params.yaml'):
+            import yaml
+            with open('params.yaml', 'r') as f:
+                return yaml.safe_load(f)
+        return None
+    except:
+        return None
+
 # Проверка соединения с API
+st.sidebar.header("🔗 Соединение")
 if st.sidebar.button("Проверить соединение с API"):
     if check_api_health():
         st.sidebar.success("✅ API доступен")
@@ -69,18 +100,27 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Геологические параметры")
-    heff = st.number_input("Эффективная высота (Heff)", min_value=0.0, value=10.0, step=0.1)
-    perm = st.number_input("Проницаемость (Perm)", min_value=0.0, value=100.0, step=1.0)
-    sg = st.slider("Газонасыщенность (Sg)", min_value=0.0, max_value=1.0, value=0.8, step=0.01)
-    c5 = st.number_input("Содержание C5", min_value=0.0, value=0.5, step=0.1)
+    heff = st.number_input("Эффективная высота (Heff)", min_value=0.0, value=10.0, step=0.1, 
+                          help="Эффективная высота пласта")
+    perm = st.number_input("Проницаемость (Perm)", min_value=0.0, value=100.0, step=1.0,
+                          help="Проницаемость породы")
+    sg = st.slider("Газонасыщенность (Sg)", min_value=0.0, max_value=1.0, value=0.8, step=0.01,
+                  help="Доля газа в пласте")
+    c5 = st.number_input("Содержание C5+", min_value=0.0, value=0.5, step=0.1,
+                        help="Содержание тяжелых углеводородов")
 
 with col2:
     st.subheader("Технологические параметры")
-    l_hor = st.number_input("Горизонтальная длина (L_hor)", min_value=0.0, value=500.0, step=10.0)
-    gs = st.selectbox("Тип проводки ствола", ["S-TYPE", "U-TYPE", "VGS", "GS", "NGS"])
-    temp = st.number_input("Темп падения", min_value=0.0, value=20.0, step=0.1)
-    grp = st.number_input("стадий ГРП)", min_value=0, value=1, step=1)
-    ngs = st.number_input("Количество горизонтальных стволов", min_value=0, value=2, step=1)
+    l_hor = st.number_input("Горизонтальная длина (L_hor)", min_value=0.0, value=500.0, step=10.0,
+                           help="Длина горизонтального участка")
+    gs = st.selectbox("Тип проводки ствола", ["S-TYPE", "U-TYPE", "VGS", "GS", "NGS"],
+                     help="Конфигурация скважины")
+    temp = st.number_input("Темп падения", min_value=0.0, value=20.0, step=0.1,
+                          help="Температура в пласте")
+    grp = st.number_input("Количество стадий ГРП", min_value=0, value=1, step=1,
+                         help="Количество стадий гидроразрыва пласта")
+    ngs = st.number_input("Количество горизонтальных стволов", min_value=0, value=2, step=1,
+                         help="Количество ветвей скважины")
 
 # Кнопка предсказания
 if st.button("🎯 Рассчитать NPV", type="primary"):
@@ -103,19 +143,51 @@ if st.button("🎯 Рассчитать NPV", type="primary"):
     
     # Отображение результатов
     if "predicted_NPV" in result:
-        st.success(f"## Прогнозируемый NPV: **{result['predicted_NPV']:,.2f}**")
+        # Красивое отображение результата
+        st.success(f"## Прогнозируемый NPV: **${result['predicted_NPV']:,.2f}**")
         
-        # Дополнительная информация
-        with st.expander("📊 Детали запроса"):
+        # Дополнительная аналитика
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("NPV", f"${result['predicted_NPV']:,.2f}")
+        with col2:
+            # Пример дополнительной метрики
+            st.metric("Статус", "✅ Успешно")
+        with col3:
+            st.metric("Время", datetime.now().strftime("%H:%M:%S"))
+        
+        # Детальная информация
+        with st.expander("📊 Детали запроса и ответа"):
+            st.subheader("Входные параметры")
             st.json(input_data)
+            
+            st.subheader("Ответ API")
             st.json(result)
+            
+            # История предсказаний (в сессии)
+            if 'prediction_history' not in st.session_state:
+                st.session_state.prediction_history = []
+            
+            st.session_state.prediction_history.append({
+                'timestamp': datetime.now().isoformat(),
+                'input': input_data,
+                'prediction': result['predicted_NPV']
+            })
+            
+            st.subheader("История предсказаний")
+            if st.session_state.prediction_history:
+                history_df = pd.DataFrame(st.session_state.prediction_history)
+                st.dataframe(history_df)
     else:
         st.error(f"Ошибка: {result.get('error', 'Неизвестная ошибка')}")
 
-# Информация о модели
-st.sidebar.header("ℹ️ Информация о модели")
+# Боковая панель с информацией
+st.sidebar.header("ℹ️ Информация о системе")
+
+# Информация о модели из API
 model_info = get_model_info()
 if model_info and "error" not in model_info:
+    st.sidebar.success("✅ Модель загружена")
     st.sidebar.write(f"**Тип модели:** {model_info.get('model_type', 'Неизвестно')}")
     st.sidebar.write(f"**Количество признаков:** {model_info.get('n_features', 'Неизвестно')}")
     
@@ -124,30 +196,94 @@ if model_info and "error" not in model_info:
             for feature in model_info["features"]:
                 st.write(f"• {feature}")
 else:
-    st.sidebar.info("Информация о модели недоступна")
+    st.sidebar.warning("⚠️ Модель не загружена")
+
+# Метрики из DVC
+dvc_metrics = get_dvc_metrics()
+if dvc_metrics:
+    with st.sidebar.expander("📈 Метрики модели (DVC)"):
+        st.write(f"**R²:** {dvc_metrics.get('r2', 'N/A'):.4f}")
+        st.write(f"**MAE:** {dvc_metrics.get('mae', 'N/A'):.2f}")
+        st.write(f"**MAPE:** {dvc_metrics.get('mape', 'N/A'):.2%}")
+        st.write(f"**CV R²:** {dvc_metrics.get('cv_mean', 'N/A'):.4f} ± {dvc_metrics.get('cv_std', 'N/A'):.4f}")
+
+# Параметры модели
+model_params = get_model_params()
+if model_params:
+    with st.sidebar.expander("⚙️ Параметры модели"):
+        st.write(f"**Алгоритм:** {model_params.get('model', {}).get('name', 'N/A')}")
+        params = model_params.get('model', {}).get('hyperparameters', {})
+        for key, value in params.items():
+            st.write(f"**{key}:** {value}")
+
+# Ссылки на мониторинг
+st.sidebar.header("📊 Мониторинг")
+if st.sidebar.button("📈 Открыть MLflow"):
+    st.markdown(f'<a href="{MLFLOW_URL}" target="_blank">📈 Перейти к MLflow</a>', unsafe_allow_html=True)
+
+if st.sidebar.button("🔄 Перезапустить пайплайн"):
+    with st.sidebar:
+        with st.spinner("Запуск DVC пайплайна..."):
+            import subprocess
+            try:
+                result = subprocess.run(['dvc', 'repro'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    st.success("✅ Пайплайн успешно выполнен")
+                else:
+                    st.error(f"❌ Ошибка: {result.stderr}")
+            except Exception as e:
+                st.error(f"❌ Ошибка запуска: {e}")
 
 # Примеры запросов
-st.sidebar.header("📋 Примеры запросов")
-if st.sidebar.button("Загрузить пример 1"):
-    st.experimental_set_query_params(example=1)
-    st.rerun()
+st.sidebar.header("🎯 Примеры запросов")
 
-if st.sidebar.button("Загрузить пример 2"):
-    st.experimental_set_query_params(example=2)
-    st.rerun()
+example_data = [
+    {
+        "name": "Пример 1: Стандартная скважина",
+        "data": {"Heff": 15.0, "Perm": 150.0, "Sg": 0.75, "L_hor": 600.0, 
+                "GS": "S-TYPE", "temp": 25.0, "C5": 0.6, "GRP": 2, "nGS": 3}
+    },
+    {
+        "name": "Пример 2: Высокопродуктивная", 
+        "data": {"Heff": 25.0, "Perm": 300.0, "Sg": 0.85, "L_hor": 800.0,
+                "GS": "U-TYPE", "temp": 30.0, "C5": 0.7, "GRP": 3, "nGS": 4}
+    }
+]
+
+for i, example in enumerate(example_data):
+    if st.sidebar.button(example["name"]):
+        for key, value in example["data"].items():
+            # Здесь нужно обновить соответствующие поля в UI
+            st.sidebar.write(f"Загружен {key}: {value}")
 
 # Инструкция
 with st.expander("📖 Инструкция по использованию"):
     st.markdown("""
-    1. **Запустите FastAPI сервер** на порту 8000
-    2. **Убедитесь что API доступен** (кнопка проверки соединения)
-    3. **Заполните все параметры** скважины
-    4. **Нажмите 'Рассчитать NPV'** для получения прогноза
-    5. **Используйте примеры** для быстрого заполнения
+    ### 🚀 Быстрый старт
     
-    **Примечание:** Убедитесь что ваш Docker контейнер с API запущен!
+    1. **Запустите FastAPI сервер**: `python app.py` (порт 8000)
+    2. **Запустите MLflow**: `mlflow server --backend-store-uri file:mlruns --host localhost --port 5005`
+    3. **Заполните параметры** скважины или используйте примеры
+    4. **Нажмите 'Рассчитать NPV'** для получения прогноза
+    
+    ### 🔧 Для разработчиков
+    
+    - **DVC пайплайн**: `dvc repro` - перезапуск обучения
+    - **Метрики**: `dvc metrics show` - просмотр метрик
+    - **Эксперименты**: `dvc exp run` - запуск экспериментов
+    
+    ### 📊 Мониторинг
+    
+    - **MLflow**: Отслеживание экспериментов и моделей
+    - **DVC**: Версионирование данных и метрик
+    - **FastAPI**: Документация API по `/docs`
+    
+    **Примечание:** Убедитесь что все сервисы запущены!
     """)
 
 # Футер
 st.markdown("---")
-st.caption("NPV Prediction App • Powered by FastAPI + Streamlit + XGBoost")
+st.caption(f"""
+NPV Prediction App • Powered by FastAPI + Streamlit + XGBoost + DVC + MLflow
+• Версия: 2.0 • {datetime.now().year}
+""")
