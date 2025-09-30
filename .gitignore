@@ -1,32 +1,35 @@
-# Данные
-data/processed/
-data/raw/*.xlsx
-!data/raw/data.xlsx.dvc
-
-# Модели
-models/
-!models/*.dvc
+# Добавить к существующему
+# MLflow
+mlruns/
+mlruns.db
 
 # DVC
-.dvc/
+.dvc/tmp/
+.dvc/cache/
+dv_storage/
 
 # Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-oil/
-venv/
-.oil/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
 
 # IDE
-.vscode/
-.idea/
+.vscode/settings.json
+.idea/workspace.xml
 
 # OS
-.DS_Store
 Thumbs.db
 
 # Логи
 *.log
+logs/
+
+# Временные файлы
+*.tmp
+*.temp
+
+oil/

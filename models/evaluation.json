@@ -1,0 +1,17 @@
+{
+  "test_metrics": {
+    "mae": 7.668318041087923,
+    "r2": 0.9987797953453642,
+    "mape": 0.09728486281941906
+  },
+  "predictions_stats": {
+    "actual_mean": -200.25253807847153,
+    "predicted_mean": -200.0535888671875,
+    "actual_std": 304.8483129739445,
+    "predicted_std": 302.4109802246094
+  },
+  "residuals_analysis": {
+    "residuals_mean": -0.19894991184663136,
+    "residuals_std": 10.646926856172326
+  }
+}
