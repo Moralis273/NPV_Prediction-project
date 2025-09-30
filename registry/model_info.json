@@ -1,7 +1,7 @@
 {
   "model_name": "xgboost_NPV",
-  "model_version": 3,
-  "run_id": "3ae4bd5736ee4f36b8412ee1df9bb4cf",
+  "model_version": 4,
+  "run_id": "98c9894a35724612bffb4cdf4ddca6ab",
   "status": "existing",
-  "timestamp": "2025-09-30T10:20:42.859823"
+  "timestamp": "2025-09-30T10:54:33.354485"
 }

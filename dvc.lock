@@ -9,7 +9,7 @@ stages:
       size: 1055731
     - path: params.yaml
       hash: md5
-      md5: 4db94a689c59111c6dc08d787af72e28
+      md5: c3536d4b1e68b87541cbbcc208f7d6f2
       size: 458
     - path: src/preprocess.py
       hash: md5
@@ -51,7 +51,7 @@ stages:
       size: 928180
     - path: params.yaml
       hash: md5
-      md5: 4db94a689c59111c6dc08d787af72e28
+      md5: c3536d4b1e68b87541cbbcc208f7d6f2
       size: 458
     - path: src/train.py
       hash: md5
@@ -60,8 +60,8 @@ stages:
     params:
       params.yaml:
         model.hyperparameters:
-          n_estimators: 200
-          max_depth: 6
+          n_estimators: 150
+          max_depth: 5
           learning_rate: 0.05
           subsample: 0.8
         model.name: xgboost
@@ -70,12 +70,12 @@ stages:
     outs:
     - path: models/metrics.json
       hash: md5
-      md5: dd5792c2472797a546eb2ceda7364978
+      md5: 2a2dd7a5e1c78961586f52623ce6c5ce
       size: 163
     - path: models/model.joblib
       hash: md5
-      md5: 9b61437fe31e085811cdc1771d2af651
-      size: 471151
+      md5: 3a1e867ef3cc50a1de846c0c65b06017
+      size: 421861
   evaluate:
     cmd: python src/evaluate.py
     deps:
@@ -85,8 +85,8 @@ stages:
       size: 928180
     - path: models/model.joblib
       hash: md5
-      md5: 9b61437fe31e085811cdc1771d2af651
-      size: 471151
+      md5: 3a1e867ef3cc50a1de846c0c65b06017
+      size: 421861
     - path: src/evaluate.py
       hash: md5
       md5: d188b0517ac9098e19eaccf70bc0a79e
@@ -94,22 +94,22 @@ stages:
     outs:
     - path: models/evaluation.json
       hash: md5
-      md5: df5876fbd25be41e43cdc4750d62248d
-      size: 433
+      md5: becf2355b94fa578ad68dedc84cc5a95
+      size: 438
   generate_report:
     cmd: python src/generate_report.py
     deps:
     - path: models/evaluation.json
       hash: md5
-      md5: df5876fbd25be41e43cdc4750d62248d
-      size: 433
+      md5: becf2355b94fa578ad68dedc84cc5a95
+      size: 438
     - path: models/metrics.json
       hash: md5
-      md5: dd5792c2472797a546eb2ceda7364978
+      md5: 2a2dd7a5e1c78961586f52623ce6c5ce
       size: 163
     - path: params.yaml
       hash: md5
-      md5: 4db94a689c59111c6dc08d787af72e28
+      md5: c3536d4b1e68b87541cbbcc208f7d6f2
       size: 458
     - path: src/generate_report.py
       hash: md5
@@ -118,14 +118,14 @@ stages:
     outs:
     - path: reports/model_report.json
       hash: md5
-      md5: c2434b128cfecd4b882f616608afff04
-      size: 776
+      md5: d30af247a1334763d83aaa0fb4d2d2e8
+      size: 780
   register:
     cmd: python src/register_model.py
     deps:
     - path: params.yaml
       hash: md5
-      md5: 4db94a689c59111c6dc08d787af72e28
+      md5: c3536d4b1e68b87541cbbcc208f7d6f2
       size: 458
     - path: src/register_model.py
       hash: md5
@@ -137,5 +137,5 @@ stages:
     outs:
     - path: registry/model_info.json
       hash: md5
-      md5: 5f57b051a9739bb258314ba8fd9a09a7
+      md5: 07222d6efb5ee993d7dc7a06a988b93d
       size: 178
