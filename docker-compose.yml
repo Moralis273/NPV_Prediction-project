@@ -1,14 +1,15 @@
 services:
   # Сервис MLflow для трекинга экспериментов и моделей
   mlflow:
-    image: ghcr.io/mlflow/mlflow:latest  # Или укажите версию, например :2.9.2, если она существует
+    image: ghcr.io/mlflow/mlflow:latest
     ports:
       - "5000:5000"
-    command: mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts --host 0.0.0.0 --port 5000
+    command: mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts --host 0.0.0.0 --port 5000
     volumes:
       - mlflow_data:/mlflow
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+
 
   # Сервис FastAPI для API прогнозирования NPV
   api:
