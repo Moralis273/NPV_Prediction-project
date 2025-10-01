@@ -16,17 +16,17 @@ st.set_page_config(
 st.title("💰 NPV Prediction App")
 st.markdown("Прогнозирование NPV на основе параметров скважины")
 
-# URL вашего API (по умолчанию localhost)
+# URL вашего API (используем переменные окружения для гибкости)
 API_URL = st.sidebar.text_input(
     "URL API", 
-    value="http://localhost:8001",  # ← ДОЛЖЕН БЫТЬ 8000, а не 5005!
+    value=os.getenv('API_URL', 'http://localhost:8001'),  # Используем переменную окружения с дефолтом
     help="Введите URL вашего FastAPI сервера"
 )
 
 # MLflow URL для мониторинга
 MLFLOW_URL = st.sidebar.text_input(
     "MLflow URL", 
-    value="http://localhost:5005",  # ← Это для MLflow
+    value=os.getenv('MLFLOW_URL', 'http://localhost:5000'),  # Используем переменную окружения с дефолтом
     help="Введите URL MLflow сервера"
 )
 
@@ -250,19 +250,35 @@ example_data = [
     }
 ]
 
+# Для загрузки примеров используем session_state для обновления полей
+if 'load_example' not in st.session_state:
+    st.session_state.load_example = None
+
 for i, example in enumerate(example_data):
     if st.sidebar.button(example["name"]):
-        for key, value in example["data"].items():
-            # Здесь нужно обновить соответствующие поля в UI
-            st.sidebar.write(f"Загружен {key}: {value}")
+        st.session_state.load_example = example["data"]
+        st.rerun()  # Перезапускаем app для обновления полей
+
+# Если пример загружен, обновляем поля
+if st.session_state.load_example:
+    heff = st.session_state.load_example["Heff"]
+    perm = st.session_state.load_example["Perm"]
+    sg = st.session_state.load_example["Sg"]
+    l_hor = st.session_state.load_example["L_hor"]
+    gs = st.session_state.load_example["GS"]
+    temp = st.session_state.load_example["temp"]
+    c5 = st.session_state.load_example["C5"]
+    grp = st.session_state.load_example["GRP"]
+    ngs = st.session_state.load_example["nGS"]
+    st.session_state.load_example = None  # Сбрасываем после загрузки
 
 # Инструкция
 with st.expander("📖 Инструкция по использованию"):
     st.markdown("""
     ### 🚀 Быстрый старт
     
-    1. **Запустите FastAPI сервер**: `python app.py` (порт 8000)
-    2. **Запустите MLflow**: `mlflow server --backend-store-uri file:mlruns --host localhost --port 5005`
+    1. **Запустите FastAPI сервер**: `python app.py` (порт 8001)
+    2. **Запустите MLflow**: `mlflow server --backend-store-uri file:mlruns --host localhost --port 5000`
     3. **Заполните параметры** скважины или используйте примеры
     4. **Нажмите 'Рассчитать NPV'** для получения прогноза
     

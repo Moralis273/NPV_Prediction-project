@@ -1,0 +1,43 @@
+services:
+  # Сервис MLflow для трекинга экспериментов и моделей
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest  # Или укажите версию, например :2.9.2, если она существует
+    ports:
+      - "5000:5000"
+    command: mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts --host 0.0.0.0 --port 5000
+    volumes:
+      - mlflow_data:/mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+
+  # Сервис FastAPI для API прогнозирования NPV
+  api:
+    build: .  # Собирает образ из Dockerfile в текущей директории
+    ports:
+      - "8001:8001"  # Порт для доступа к API (http://localhost:8000/docs для Swagger)
+    command: uvicorn app:app --host 0.0.0.0 --port 8001  # Запуск FastAPI
+    depends_on:
+      - mlflow  # Запускается после MLflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для логирования в MLflow из API
+    volumes:
+      - .:/app  # Монтирует проект в контейнер (для DVC и данных)
+      - /app/__pycache__  # Исключает кэш Python
+
+  # Сервис Streamlit для веб-интерфейса
+  streamlit:
+    build: .  # Тот же образ
+    ports:
+      - "8501:8501"  # Порт для доступа к UI (http://localhost:8501)
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0  # Запуск Streamlit
+    depends_on:
+      - api  # Запускается после API
+    environment:
+      - API_URL=http://api:8001  # Для обращения к API из Streamlit
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для интеграции с MLflow
+    volumes:
+      - .:/app  # Монтирует проект
+      - /app/__pycache__
+
+volumes:
+  mlflow_data:  # Volume для данных MLflow (чтобы не терялись при перезапуске)

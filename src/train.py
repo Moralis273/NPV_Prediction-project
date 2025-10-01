@@ -19,7 +19,7 @@ def main():
     X_train, X_test, y_train, y_test = data['X_train'], data['X_test'], data['y_train'], data['y_test']
     
     # Настройка MLflow
-    mlflow.set_tracking_uri("http://localhost:5005")
+    mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("NPV_Prediction_DVC")
     
     with mlflow.start_run():
