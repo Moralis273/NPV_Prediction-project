@@ -123,6 +123,10 @@ stages:
   register:
     cmd: python src/register_model.py
     deps:
+    - path: models/model.joblib
+      hash: md5
+      md5: 9f1f54ba1d588ba30c039498a16294fb
+      size: 5068390
     - path: params.yaml
       hash: md5
       md5: 57963591351d7e820582b02e0296c81e
@@ -137,5 +141,5 @@ stages:
     outs:
     - path: registry/model_info.json
       hash: md5
-      md5: eb78f0d75fb93bc3c79bac7e9491bd40
-      size: 178
+      md5: a430cbd26953353ac7a267047e8bdf2f
+      size: 334
