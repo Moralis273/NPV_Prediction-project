@@ -60,6 +60,7 @@ stages:
     deps:
       - src/register_model.py
       - params.yaml
+      - models/model.joblib 
     params:
       - model.name
     metrics:

@@ -10,20 +10,26 @@ services:
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
 
-
   # Сервис FastAPI для API прогнозирования NPV
   api:
     build: .  # Собирает образ из Dockerfile в текущей директории
     ports:
-      - "8001:8001"  # Порт для доступа к API (http://localhost:8000/docs для Swagger)
-    command: uvicorn app:app --host 0.0.0.0 --port 8001  # Запуск FastAPI
+      - "8001:8001"  # Порт для доступа к API (http://localhost:8001/docs для Swagger)
+    command: >  # Изменено: запускает DVC перед API
+      bash -c "
+        echo 'Запуск DVC пайплайна...' &&
+        dvc repro &&  # Выполняет весь пайплайн DVC
+        echo 'DVC завершён. Запуск API...' &&
+        uvicorn app:app --host 0.0.0.0 --port 8001  # Запуск FastAPI
+      "
     depends_on:
-      - mlflow  # Запускается после MLflow
+      - mlflow  # Запускается после MLflow (важно для этапа register)
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для логирования в MLflow из API
     volumes:
       - .:/app  # Монтирует проект в контейнер (для DVC и данных)
       - /app/__pycache__  # Исключает кэш Python
+
 
   # Сервис Streamlit для веб-интерфейса
   streamlit:

@@ -1,17 +1,17 @@
 {
   "test_metrics": {
-    "mae": 7.668318041087923,
-    "r2": 0.9987797953453642,
-    "mape": 0.09728486281941906
+    "mae": 22.340766806676974,
+    "r2": 0.9901378679338174,
+    "mape": 0.23718694330298323
   },
   "predictions_stats": {
     "actual_mean": -200.25253807847153,
-    "predicted_mean": -200.0535888671875,
+    "predicted_mean": -200.8868408203125,
     "actual_std": 304.8483129739445,
-    "predicted_std": 302.4109802246094
+    "predicted_std": 276.3131408691406
   },
   "residuals_analysis": {
-    "residuals_mean": -0.19894991184663136,
-    "residuals_std": 10.646926856172326
+    "residuals_mean": 0.6343133741534165,
+    "residuals_std": 30.267307098652918
   }
 }
