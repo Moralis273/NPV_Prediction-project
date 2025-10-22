@@ -1,0 +1,1196 @@
+дерево проекта в баш
+find . -type d \( -name 'oil' -o -name '.dvc' -o -name '.git' -o -name '__pycache__' \) -prune -o -type f -printf '%h/%f\n' | head -30
+
+
+Далее весь код 
+
+# Сервис FastAPI для API прогнозирования NPV
+  api:
+    build: .  # Собирает образ из Dockerfile в текущей директории
+    ports:
+      - "8001:8001"  # Порт для доступа к API (http://localhost:8001/docs для Swagger)
+    command: >  # Изменено: запускает DVC перед API
+      bash -c "
+        echo 'Запуск DVC пайплайна...' &&
+        dvc repro &&  # Выполняет весь пайплайн DVC
+        echo 'DVC завершён. Запуск API...' &&
+        uvicorn app:app --host 0.0.0.0 --port 8001  # Запуск FastAPI
+      "
+    depends_on:
+      - mlflow  # Запускается после MLflow (важно для этапа register)
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для логирования в MLflow из API
+    volumes:
+      - .:/app  # Монтирует проект в контейнер (для DVC и данных)
+      - /app/__pycache__  # Исключает кэш Python
+
+
+  # Сервис Streamlit для веб-интерфейса
+  streamlit:
+    build: .  # Тот же образ
+    ports:
+      - "8501:8501"  # Порт для доступа к UI (http://localhost:8501)
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0  # Запуск Streamlit
+    depends_on:
+      - api  # Запускается после API
+    environment:
+      - API_URL=http://api:8001  # Для обращения к API из Streamlit
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для интеграции с MLflow
+    volumes:
+      - .:/app  # Монтирует проект
+      - /app/__pycache__
+
+volumes:
+  mlflow_data:  # Volume для данных MLflow (чтобы не терялись при перезапуске)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./Dockerfile
+═══════════════════════════════════════════════════════════════════════════════
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Установка DVC и git (необходимо для работы с DVC)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Копирование requirements и установка зависимостей
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+RUN pip install dvc
+
+
+# Копирование исходного кода
+COPY . .
+
+# Экспорт порта
+EXPOSE 8001
+
+# Запуск приложения
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./Dockerfile_orig
+═══════════════════════════════════════════════════════════════════════════════
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Установка DVC и git (необходимо для работы с DVC)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Копирование requirements и установка зависимостей
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+RUN pip install dvc
+
+# Копирование исходного кода
+COPY . .
+
+# Инициализация DVC (для продакшена можно использовать remote storage)
+RUN dvc init --no-scm
+
+# Экспорт порта
+EXPOSE 8000
+
+# Запуск приложения
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./dvc.lock
+═══════════════════════════════════════════════════════════════════════════════
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+    - path: data/raw/data.xlsx
+      hash: md5
+      md5: 5878791f8961af5143d726b8a2964c0f
+      size: 1055731
+    - path: params.yaml
+      hash: md5
+      md5: 57963591351d7e820582b02e0296c81e
+      size: 459
+    - path: src/preprocess.py
+      hash: md5
+      md5: edb5325804150f45627fe4df806d0d74
+      size: 2041
+    params:
+      params.yaml:
+        data.processed_path: data/processed/train_test.joblib
+        data.raw_path: data/raw/data.xlsx
+        features.categorical_columns:
+        - GS
+        features.drop_columns:
+        - cond rate
+        - gas rate
+        - sum cond
+        - sum gas
+        features.target: NPV
+        preprocessing.random_state: 42
+        preprocessing.test_size: 0.2
+    outs:
+    - path: data/processed/train_test.joblib
+      hash: md5
+      md5: 7529128e1d84fb367ab8192fbea58247
+      size: 928180
+    - path: models/encoder.joblib
+      hash: md5
+      md5: 97a5994e25d699c849c80f9c73a8db1b
+      size: 1389
+    - path: models/feature_columns.joblib
+      hash: md5
+      md5: bbb3a22cce65e92d97561c19fee2f343
+      size: 109
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/processed/train_test.joblib
+      hash: md5
+      md5: 7529128e1d84fb367ab8192fbea58247
+      size: 928180
+    - path: params.yaml
+      hash: md5
+      md5: 57963591351d7e820582b02e0296c81e
+      size: 459
+    - path: src/train.py
+      hash: md5
+      md5: 2aff6ed8bea61de1ec7c8760e1164f84
+      size: 2413
+    params:
+      params.yaml:
+        model.hyperparameters:
+          n_estimators: 250
+          max_depth: 15
+          learning_rate: 0.01
+          subsample: 0.8
+        model.name: xgboost
+        training.cv_folds: 5
+        training.scoring: r2
+    outs:
+    - path: models/metrics.json
+      hash: md5
+      md5: f566893d9b8357c4236025968d0f550c
+      size: 164
+    - path: models/model.joblib
+      hash: md5
+      md5: 9f1f54ba1d588ba30c039498a16294fb
+      size: 5068390
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+    - path: data/processed/train_test.joblib
+      hash: md5
+      md5: 7529128e1d84fb367ab8192fbea58247
+      size: 928180
+    - path: models/model.joblib
+      hash: md5
+      md5: 9f1f54ba1d588ba30c039498a16294fb
+      size: 5068390
+    - path: src/evaluate.py
+      hash: md5
+      md5: d188b0517ac9098e19eaccf70bc0a79e
+      size: 1638
+    outs:
+    - path: models/evaluation.json
+      hash: md5
+      md5: 50cd2ce43364f711a22b6c6337af649a
+      size: 437
+  generate_report:
+    cmd: python src/generate_report.py
+    deps:
+    - path: models/evaluation.json
+      hash: md5
+      md5: 50cd2ce43364f711a22b6c6337af649a
+      size: 437
+    - path: models/metrics.json
+      hash: md5
+      md5: f566893d9b8357c4236025968d0f550c
+      size: 164
+    - path: params.yaml
+      hash: md5
+      md5: 57963591351d7e820582b02e0296c81e
+      size: 459
+    - path: src/generate_report.py
+      hash: md5
+      md5: c560a7a9c25118b5036412f52e0e49d0
+      size: 1712
+    outs:
+    - path: reports/model_report.json
+      hash: md5
+      md5: aae02539421c6887722fdd05657eab56
+      size: 782
+  register:
+    cmd: python src/register_model.py
+    deps:
+    - path: models/model.joblib
+      hash: md5
+      md5: 9f1f54ba1d588ba30c039498a16294fb
+      size: 5068390
+    - path: params.yaml
+      hash: md5
+      md5: 57963591351d7e820582b02e0296c81e
+      size: 459
+    - path: src/register_model.py
+      hash: md5
+      md5: e1cc9c50645a29659d97cc4835cfd39d
+      size: 3861
+    params:
+      params.yaml:
+        model.name: xgboost
+    outs:
+    - path: registry/model_info.json
+      hash: md5
+      md5: a430cbd26953353ac7a267047e8bdf2f
+      size: 334
+
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./dvc.yaml
+═══════════════════════════════════════════════════════════════════════════════
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+      - data/raw/data.xlsx
+      - src/preprocess.py
+      - params.yaml
+    params:
+      - data.raw_path
+      - data.processed_path
+      - features.target
+      - features.drop_columns
+      - features.categorical_columns
+      - preprocessing.test_size
+      - preprocessing.random_state
+    outs:
+      - data/processed/train_test.joblib
+      - models/encoder.joblib
+      - models/feature_columns.joblib
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - data/processed/train_test.joblib
+      - src/train.py
+      - params.yaml
+    params:
+      - model.name
+      - model.hyperparameters
+      - training.cv_folds
+      - training.scoring
+    outs:
+      - models/model.joblib
+    metrics:
+      - models/metrics.json:
+          cache: false
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - data/processed/train_test.joblib
+      - models/model.joblib
+      - src/evaluate.py
+    metrics:
+      - models/evaluation.json:
+          cache: false
+
+  generate_report:
+    cmd: python src/generate_report.py
+    deps:
+      - models/metrics.json
+      - models/evaluation.json
+      - params.yaml
+      - src/generate_report.py
+    outs:
+      - reports/model_report.json
+
+  register:
+    cmd: python src/register_model.py
+    deps:
+      - src/register_model.py
+      - params.yaml
+      - models/model.joblib
+    params:
+      - model.name
+    metrics:
+      - registry/model_info.json:
+          cache: false
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./models/.gitignore
+═══════════════════════════════════════════════════════════════════════════════
+/model.joblib
+
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./params.yaml
+═══════════════════════════════════════════════════════════════════════════════
+data:
+  raw_path: "data/raw/data.xlsx"
+  processed_path: "data/processed/train_test.joblib"
+
+features:
+  target: "NPV"
+  drop_columns: ["cond rate", "gas rate", "sum cond", "sum gas"]
+  categorical_columns: ["GS"]
+
+preprocessing:
+  test_size: 0.2
+  random_state: 42
+
+model:
+  name: "xgboost"
+  hyperparameters:
+    n_estimators: 250
+    max_depth: 15
+    learning_rate: 0.01
+    subsample: 0.8
+
+training:
+  cv_folds: 5
+  scoring: "r2"
+
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./reports/.gitignore
+═══════════════════════════════════════════════════════════════════════════════
+/model_report.json
+
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./requirements.txt
+═══════════════════════════════════════════════════════════════════════════════
+# Core Data Science
+numpy==1.26.4  # Фиксируем на 1.26.4 (было 1.26.0, но теперь явно)
+xgboost==2.0.3  # Обновите до 2.0.3 для совместимости
+pandas==2.0.3   # Убедитесь, что pandas совместим (pandas 2.x работает с NumPy 1.26)
+scikit-learn==1.3.0  # Уже ок
+
+# ML Operations & Tracking
+mlflow==2.9.2
+dvc==3.32.0
+
+# Web Framework & API
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# Web Interface
+streamlit==1.28.0
+requests==2.31.0
+
+# Data Processing & Serialization
+joblib==1.3.2
+openpyxl==3.1.2
+pyyaml==6.0.1
+
+# Visualization (используются в ноутбуках)
+matplotlib==3.8.0
+seaborn==0.13.0
+
+# Production Server (опционально)
+gunicorn==21.2.0
+
+# Development (рекомендуется добавить)
+jupyter==1.0.0
+ipython==8.17.2
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./src/evaluate.py
+═══════════════════════════════════════════════════════════════════════════════
+import joblib
+import json
+import pandas as pd
+from sklearn.metrics import mean_absolute_error, r2_score, mean_absolute_percentage_error
+import yaml
+
+def load_params():
+    with open("params.yaml", "r") as f:
+        return yaml.safe_load(f)
+
+def main():
+    params = load_params()
+
+    # Загрузка данных и модели
+    data = joblib.load(params['data']['processed_path'])
+    model = joblib.load('models/model.joblib')
+
+    X_test, y_test = data['X_test'], data['y_test']
+
+    # Предсказания
+    y_pred = model.predict(X_test)
+
+    # Детальная оценка
+    evaluation = {
+        'test_metrics': {
+            'mae': mean_absolute_error(y_test, y_pred),
+            'r2': r2_score(y_test, y_pred),
+            'mape': mean_absolute_percentage_error(y_test, y_pred)
+        },
+        'predictions_stats': {
+            'actual_mean': float(y_test.mean()),
+            'predicted_mean': float(y_pred.mean()),
+            'actual_std': float(y_test.std()),
+            'predicted_std': float(y_pred.std())
+        },
+        'residuals_analysis': {
+            'residuals_mean': float((y_test - y_pred).mean()),
+            'residuals_std': float((y_test - y_pred).std())
+        }
+    }
+
+    # Сохранение детальной оценки
+    with open('models/evaluation.json', 'w') as f:
+        json.dump(evaluation, f, indent=2)
+
+    print("✅ Детальная оценка завершена")
+    print(f"R² на тесте: {evaluation['test_metrics']['r2']:.4f}")
+
+if __name__ == "__main__":
+    main()
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./src/generate_report.py
+═══════════════════════════════════════════════════════════════════════════════
+import json
+import yaml
+import pandas as pd
+from datetime import datetime
+
+def generate_report():
+    # Загрузка метрик и параметров
+    with open('models/metrics.json', 'r') as f:
+        metrics = json.load(f)
+
+    with open('models/evaluation.json', 'r') as f:
+        evaluation = json.load(f)
+
+    with open('params.yaml', 'r') as f:
+        params = yaml.safe_load(f)
+
+    # Создание отчета
+    report = {
+        'timestamp': datetime.now().isoformat(),
+        'model_info': {
+            'name': params['model']['name'],
+            'hyperparameters': params['model']['hyperparameters']
+        },
+        'performance': {
+            'cross_validation': {
+                'mean_r2': metrics['cv_mean'],
+                'std_r2': metrics['cv_std']
+            },
+            'test_set': evaluation['test_metrics'],
+            'predictions_quality': evaluation['predictions_stats']
+        },
+        'data_info': {
+            'target': params['features']['target'],
+            'features_count': len(params['features']['drop_columns']) + 1  # приблизительно
+        }
+    }
+
+    # Сохранение отчета
+    with open('reports/model_report.json', 'w') as f:
+        json.dump(report, f, indent=2)
+
+    print("📊 Отчет создан:")
+    print(f"   Модель: {report['model_info']['name']}")
+    print(f"   CV R²: {report['performance']['cross_validation']['mean_r2']:.4f} ± {report['performance']['cross_validation']['std_r2']:.4f}")
+    print(f"   Test R²: {report['performance']['test_set']['r2']:.4f}")
+
+if __name__ == "__main__":
+    generate_report()
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./src/preprocess.py
+═══════════════════════════════════════════════════════════════════════════════
+import pandas as pd
+import joblib
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
+import yaml
+import os
+
+def load_params():
+    with open("params.yaml", "r") as f:
+        return yaml.safe_load(f)
+
+def main():
+    params = load_params()
+
+    # Загрузка данных
+    print("Загрузка данных...")
+    df = pd.read_excel(params['data']['raw_path'])
+
+    # Предобработка
+    print("Предобработка данных...")
+    X = df.drop(params['features']['drop_columns'] + [params['features']['target']], axis=1)
+    y = df[params['features']['target']]
+
+    # Кодирование категориальных переменных
+    encoder = OneHotEncoder(drop='first', sparse_output=False)
+    encoded_cols = encoder.fit_transform(X[params['features']['categorical_columns']])
+    encoded_df = pd.DataFrame(
+        encoded_cols,
+        columns=encoder.get_feature_names_out(params['features']['categorical_columns'])
+    )
+
+    X_processed = pd.concat([X.drop(params['features']['categorical_columns'], axis=1), encoded_df], axis=1)
+
+    # Разделение на train/test
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_processed, y,
+        test_size=params['preprocessing']['test_size'],
+        random_state=params['preprocessing']['random_state']
+    )
+
+    # Сохранение
+    os.makedirs('data/processed', exist_ok=True)
+    joblib.dump({
+        'X_train': X_train, 'X_test': X_test,
+        'y_train': y_train, 'y_test': y_test,
+        'feature_names': X_processed.columns.tolist()
+    }, params['data']['processed_path'])
+
+    os.makedirs('models', exist_ok=True)
+    joblib.dump(encoder, 'models/encoder.joblib')
+    joblib.dump(X_processed.columns.tolist(), 'models/feature_columns.joblib')
+
+    print("✅ Данные успешно предобработаны")
+
+if __name__ == "__main__":
+    main()
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./src/register_model.py
+═══════════════════════════════════════════════════════════════════════════════
+import mlflow
+from mlflow.tracking import MlflowClient
+import yaml
+import json
+import os
+from datetime import datetime
+
+def load_params():
+    with open("params.yaml", "r") as f:
+        return yaml.safe_load(f)
+
+def main():
+    params = load_params()
+
+    # Настройка клиента MLflow
+    client = MlflowClient()
+
+    try:
+        # Поиск последнего запуска
+        experiment = client.get_experiment_by_name("NPV_Prediction_DVC")
+        if not experiment:
+            print("❌ Эксперимент не найден")
+            # Создаем файл с ошибкой
+            registry_info = {"error": "Experiment not found"}
+            os.makedirs('registry', exist_ok=True)
+            with open('registry/model_info.json', 'w') as f:
+                json.dump(registry_info, f, indent=2)
+            return
+
+        runs = client.search_runs(experiment.experiment_id, order_by=["attributes.start_time DESC"])
+
+        if runs:
+            latest_run = runs[0]
+            run_id = latest_run.info.run_id
+
+            # Регистрация модели
+            model_name = f"{params['model']['name']}_NPV"
+
+            try:
+                # Пробуем найти существующую модель
+                client.get_registered_model(model_name)
+                print(f"Модель {model_name} уже существует")
+                model_status = "existing"
+            except:
+                # Создаем новую зарегистрированную модель
+                client.create_registered_model(model_name)
+                print(f"Создана новая модель: {model_name}")
+                model_status = "new"
+
+            # Добавляем версию
+            model_version = client.create_model_version(
+                name=model_name,
+                source=f"mlruns/{experiment.experiment_id}/{run_id}/artifacts/model",
+                run_id=run_id
+            )
+
+            # Сохраняем информацию о регистрации
+            registry_info = {
+                "model_name": model_name,
+                "model_version": model_version.version,
+                "run_id": run_id,
+                "status": model_status,
+                "timestamp": datetime.now().isoformat()  # ИСПРАВЛЕНО!
+            }
+
+            # Создаем папку registry если не существует
+            os.makedirs('registry', exist_ok=True)
+
+            # Сохраняем информацию в файл
+            with open('registry/model_info.json', 'w') as f:
+                json.dump(registry_info, f, indent=2)
+
+            print(f"✅ Модель {model_name} зарегистрирована в MLflow Model Registry")
+            print(f"📁 Информация сохранена в registry/model_info.json")
+
+        else:
+            print("❌ Не найдены запуски для регистрации")
+            # Создаем файл с ошибкой
+            os.makedirs('registry', exist_ok=True)
+            with open('registry/model_info.json', 'w') as f:
+                json.dump({"error": "No runs found"}, f, indent=2)
+
+    except Exception as e:
+        print(f"❌ Ошибка при регистрации модели: {e}")
+        # Создаем файл с информацией об ошибке
+        os.makedirs('registry', exist_ok=True)
+        with open('registry/model_info.json', 'w') as f:
+            json.dump({"error": str(e)}, f, indent=2)
+
+if __name__ == "__main__":
+    main()
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./src/train.py
+═══════════════════════════════════════════════════════════════════════════════
+import joblib
+import json
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_absolute_error, r2_score, mean_absolute_percentage_error
+from sklearn.model_selection import cross_val_score
+import yaml
+import mlflow
+
+def load_params():
+    with open("params.yaml", "r") as f:
+        return yaml.safe_load(f)
+
+def main():
+    params = load_params()
+
+    # Загрузка данных
+    print("Загрузка обработанных данных...")
+    data = joblib.load(params['data']['processed_path'])
+    X_train, X_test, y_train, y_test = data['X_train'], data['X_test'], data['y_train'], data['y_test']
+
+    # Настройка MLflow
+    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_experiment("NPV_Prediction_DVC")
+
+    with mlflow.start_run():
+        # Обучение модели
+        print("Обучение модели...")
+        model = XGBRegressor(
+            random_state=params['preprocessing']['random_state'],
+            objective='reg:squarederror',
+            **params['model']['hyperparameters']
+        )
+
+        model.fit(X_train, y_train)
+
+        # Кросс-валидация
+        cv_scores = cross_val_score(
+            model, X_train, y_train,
+            cv=params['training']['cv_folds'],
+            scoring=params['training']['scoring']
+        )
+
+        # Предсказания и метрики
+        y_pred = model.predict(X_test)
+        metrics = {
+            'mae': mean_absolute_error(y_test, y_pred),
+            'r2': r2_score(y_test, y_pred),
+            'mape': mean_absolute_percentage_error(y_test, y_pred),
+            'cv_mean': cv_scores.mean(),
+            'cv_std': cv_scores.std()
+        }
+
+        # Логирование в MLflow
+        mlflow.log_params(params['model']['hyperparameters'])
+        for metric, value in metrics.items():
+            mlflow.log_metric(metric, value)
+
+        mlflow.sklearn.log_model(model, "model")
+
+        # Сохранение модели и метрик
+        joblib.dump(model, 'models/model.joblib')
+        with open('models/metrics.json', 'w') as f:
+            json.dump(metrics, f, indent=2)
+
+        print(f"✅ Модель обучена. R2: {metrics['r2']:.4f}")
+
+if __name__ == "__main__":
+    main()
+
+═══════════════════════════════════════════════════════════════════════════════
+� ФАЙЛ: ./streamlit_app.py
+═══════════════════════════════════════════════════════════════════════════════
+import streamlit as st
+import requests
+import pandas as pd
+import json
+import os
+from datetime import datetime
+
+# Настройки страницы
+st.set_page_config(
+    page_title="NPV Prediction App",
+    page_icon="📊",
+    layout="wide"
+)
+
+# Заголовок приложения
+st.title("💰 NPV Prediction App")
+st.markdown("Прогнозирование NPV на основе параметров скважины")
+
+# URL вашего API (используем переменные окружения для гибкости)
+API_URL = st.sidebar.text_input(
+    "URL API",
+    value=os.getenv('API_URL', 'http://localhost:8001'),  # Используем переменную окружения с дефолтом
+    help="Введите URL вашего FastAPI сервера"
+)
+
+# MLflow URL для мониторинга
+MLFLOW_URL = st.sidebar.text_input(
+    "MLflow URL",
+    value=os.getenv('MLFLOW_URL', 'http://localhost:5000'),  # Используем переменную окружения с дефолтом
+    help="Введите URL MLflow сервера"
+)
+
+# Функция для проверки соединения с API
+def check_api_health():
+    try:
+        response = requests.get(f"{API_URL}/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
+
+# Функция для получения прогноза
+def get_prediction(data):
+    try:
+        response = requests.post(
+            f"{API_URL}/predict",
+            json=data,
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": f"Ошибка API: {response.status_code} - {response.text}"}
+    except Exception as e:
+        return {"error": f"Ошибка соединения: {str(e)}"}
+
+# Функция для получения информации о модели
+def get_model_info():
+    try:
+        response = requests.get(f"{API_URL}/model_info", timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+    except:
+        return None
+
+# Функция для получения метрик из DVC
+def get_dvc_metrics():
+    try:
+        if os.path.exists('models/metrics.json'):
+            with open('models/metrics.json', 'r') as f:
+                return json.load(f)
+        return None
+    except:
+        return None
+
+# Функция для получения параметров модели
+def get_model_params():
+    try:
+        if os.path.exists('params.yaml'):
+            import yaml
+            with open('params.yaml', 'r') as f:
+                return yaml.safe_load(f)
+        return None
+    except:
+        return None
+
+# Проверка соединения с API
+st.sidebar.header("🔗 Соединение")
+if st.sidebar.button("Проверить соединение с API"):
+    if check_api_health():
+        st.sidebar.success("✅ API доступен")
+    else:
+        st.sidebar.error("❌ API недоступен")
+
+# Основная форма для ввода данных
+st.header("📝 Ввод параметров")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Геологические параметры")
+    heff = st.number_input("Эффективная высота (Heff)", min_value=0.0, value=10.0, step=0.1,
+                          help="Эффективная высота пласта")
+    perm = st.number_input("Проницаемость (Perm)", min_value=0.0, value=100.0, step=1.0,
+                          help="Проницаемость породы")
+    sg = st.slider("Газонасыщенность (Sg)", min_value=0.0, max_value=1.0, value=0.8, step=0.01,
+                  help="Доля газа в пласте")
+    c5 = st.number_input("Содержание C5+", min_value=0.0, value=0.5, step=0.1,
+                        help="Содержание тяжелых углеводородов")
+
+with col2:
+    st.subheader("Технологические параметры")
+    l_hor = st.number_input("Горизонтальная длина (L_hor)", min_value=0.0, value=500.0, step=10.0,
+                           help="Длина горизонтального участка")
+    gs = st.selectbox("Тип проводки ствола", ["S-TYPE", "U-TYPE", "VGS", "GS", "NGS"],
+                     help="Конфигурация скважины")
+    temp = st.number_input("Темп падения", min_value=0.0, value=20.0, step=0.1,
+                          help="Температура в пласте")
+    grp = st.number_input("Количество стадий ГРП", min_value=0, value=1, step=1,
+                         help="Количество стадий гидроразрыва пласта")
+    ngs = st.number_input("Количество горизонтальных стволов", min_value=0, value=2, step=1,
+                         help="Количество ветвей скважины")
+
+# Кнопка предсказания
+if st.button("🎯 Рассчитать NPV", type="primary"):
+    # Подготовка данных для API
+    input_data = {
+        "Heff": heff,
+        "Perm": perm,
+        "Sg": sg,
+        "L_hor": l_hor,
+        "GS": gs,
+        "temp": temp,
+        "C5": c5,
+        "GRP": grp,
+        "nGS": ngs
+    }
+
+    # Получение прогноза
+    with st.spinner("Получение прогноза..."):
+        result = get_prediction(input_data)
+
+    # Отображение результатов
+    if "predicted_NPV" in result:
+        # Красивое отображение результата
+        st.success(f"## Прогнозируемый NPV: **${result['predicted_NPV']:,.2f}**")
+
+        # Дополнительная аналитика
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("NPV", f"${result['predicted_NPV']:,.2f}")
+        with col2:
+            # Пример дополнительной метрики
+            st.metric("Статус", "✅ Успешно")
+        with col3:
+            st.metric("Время", datetime.now().strftime("%H:%M:%S"))
+
+        # Детальная информация
+        with st.expander("📊 Детали запроса и ответа"):
+            st.subheader("Входные параметры")
+            st.json(input_data)
+
+            st.subheader("Ответ API")
+            st.json(result)
+
+            # История предсказаний (в сессии)
+            if 'prediction_history' not in st.session_state:
+                st.session_state.prediction_history = []
+
+            st.session_state.prediction_history.append({
+                'timestamp': datetime.now().isoformat(),
+                'input': input_data,
+                'prediction': result['predicted_NPV']
+            })
+
+            st.subheader("История предсказаний")
+            if st.session_state.prediction_history:
+                history_df = pd.DataFrame(st.session_state.prediction_history)
+                st.dataframe(history_df)
+    else:
+        st.error(f"Ошибка: {result.get('error', 'Неизвестная ошибка')}")
+
+# Боковая панель с информацией
+st.sidebar.header("ℹ️ Информация о системе")
+
+# Информация о модели из API
+model_info = get_model_info()
+if model_info and "error" not in model_info:
+    st.sidebar.success("✅ Модель загружена")
+    st.sidebar.write(f"**Тип модели:** {model_info.get('model_type', 'Неизвестно')}")
+    st.sidebar.write(f"**Количество признаков:** {model_info.get('n_features', 'Неизвестно')}")
+
+    if "features" in model_info:
+        with st.sidebar.expander("Список признаков"):
+            for feature in model_info["features"]:
+                st.write(f"• {feature}")
+else:
+    st.sidebar.warning("⚠️ Модель не загружена")
+
+# Метрики из DVC
+dvc_metrics = get_dvc_metrics()
+if dvc_metrics:
+    with st.sidebar.expander("📈 Метрики модели (DVC)"):
+        st.write(f"**R²:** {dvc_metrics.get('r2', 'N/A'):.4f}")
+        st.write(f"**MAE:** {dvc_metrics.get('mae', 'N/A'):.2f}")
+        st.write(f"**MAPE:** {dvc_metrics.get('mape', 'N/A'):.2%}")
+        st.write(f"**CV R²:** {dvc_metrics.get('cv_mean', 'N/A'):.4f} ± {dvc_metrics.get('cv_std', 'N/A'):.4f}")
+
+# Параметры модели
+model_params = get_model_params()
+if model_params:
+    with st.sidebar.expander("⚙️ Параметры модели"):
+        st.write(f"**Алгоритм:** {model_params.get('model', {}).get('name', 'N/A')}")
+        params = model_params.get('model', {}).get('hyperparameters', {})
+        for key, value in params.items():
+            st.write(f"**{key}:** {value}")
+
+# Ссылки на мониторинг
+st.sidebar.header("📊 Мониторинг")
+if st.sidebar.button("📈 Открыть MLflow"):
+    st.markdown(f'<a href="{MLFLOW_URL}" target="_blank">📈 Перейти к MLflow</a>', unsafe_allow_html=True)
+
+if st.sidebar.button("🔄 Перезапустить пайплайн"):
+    with st.sidebar:
+        with st.spinner("Запуск DVC пайплайна..."):
+            import subprocess
+            try:
+                result = subprocess.run(['dvc', 'repro'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    st.success("✅ Пайплайн успешно выполнен")
+                else:
+                    st.error(f"❌ Ошибка: {result.stderr}")
+            except Exception as e:
+                st.error(f"❌ Ошибка запуска: {e}")
+
+# Примеры запросов
+st.sidebar.header("🎯 Примеры запросов")
+
+example_data = [
+    {
+        "name": "Пример 1: Стандартная скважина",
+        "data": {"Heff": 15.0, "Perm": 150.0, "Sg": 0.75, "L_hor": 600.0,
+                "GS": "S-TYPE", "temp": 25.0, "C5": 0.6, "GRP": 2, "nGS": 3}
+    },
+    {
+        "name": "Пример 2: Высокопродуктивная",
+        "data": {"Heff": 25.0, "Perm": 300.0, "Sg": 0.85, "L_hor": 800.0,
+                "GS": "U-TYPE", "temp": 30.0, "C5": 0.7, "GRP": 3, "nGS": 4}
+    }
+]
+
+# Для загрузки примеров используем session_state для обновления полей
+if 'load_example' not in st.session_state:
+    st.session_state.load_example = None
+
+for i, example in enumerate(example_data):
+    if st.sidebar.button(example["name"]):
+        st.session_state.load_example = example["data"]
+        st.rerun()  # Перезапускаем app для обновления полей
+
+# Если пример загружен, обновляем поля
+if st.session_state.load_example:
+    heff = st.session_state.load_example["Heff"]
+    perm = st.session_state.load_example["Perm"]
+    sg = st.session_state.load_example["Sg"]
+    l_hor = st.session_state.load_example["L_hor"]
+    gs = st.session_state.load_example["GS"]
+    temp = st.session_state.load_example["temp"]
+    c5 = st.session_state.load_example["C5"]
+    grp = st.session_state.load_example["GRP"]
+    ngs = st.session_state.load_example["nGS"]
+    st.session_state.load_example = None  # Сбрасываем после загрузки
+
+# Инструкция
+with st.expander("📖 Инструкция по использованию"):
+    st.markdown("""
+    ### 🚀 Быстрый старт
+
+    1. **Запустите FastAPI сервер**: `python app.py` (порт 8001)
+    2. **Запустите MLflow**: `mlflow server --backend-store-uri file:mlruns --host localhost --port 5000`
+    3. **Заполните параметры** скважины или используйте примеры
+    4. **Нажмите 'Рассчитать NPV'** для получения прогноза
+
+    ### 🔧 Для разработчиков
+
+    - **DVC пайплайн**: `dvc repro` - перезапуск обучения
+    - **Метрики**: `dvc metrics show` - просмотр метрик
+    - **Эксперименты**: `dvc exp run` - запуск экспериментов
+
+    ### 📊 Мониторинг
+
+    - **MLflow**: Отслеживание экспериментов и моделей
+    - **DVC**: Версионирование данных и метрик
+    - **FastAPI**: Документация API по `/docs`
+
+    **Примечание:** Убедитесь что все сервисы запущены!
+    """)
+
+# Футер
+st.markdown("---")
+st.caption(f"""
+NPV Prediction App • Powered by FastAPI + Streamlit + XGBoost + DVC + MLflow
+• Версия: 2.0 • {datetime.now().year}
+""")
+
+
+
+docker-compose.yml
+services:
+  # Сервис MLflow для трекинга экспериментов и моделей
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    command: mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts --host 0.0.0.0 --port 5000
+    volumes:
+      - mlflow_data:/mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+
+  # Сервис FastAPI для API прогнозирования NPV
+  api:
+    build: .  # Собирает образ из Dockerfile в текущей директории
+    ports:
+      - "8001:8001"  # Порт для доступа к API (http://localhost:8001/docs для Swagger)
+    command: >  # Изменено: запускает DVC перед API
+      bash -c "
+        echo 'Запуск DVC пайплайна...' &&
+        dvc repro &&  # Выполняет весь пайплайн DVC
+        echo 'DVC завершён. Запуск API...' &&
+        uvicorn app:app --host 0.0.0.0 --port 8001  # Запуск FastAPI
+      "
+    depends_on:
+      - mlflow  # Запускается после MLflow (важно для этапа register)
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для логирования в MLflow из API
+    volumes:
+      - .:/app  # Монтирует проект в контейнер (для DVC и данных)
+      - /app/__pycache__  # Исключает кэш Python
+
+
+  # Сервис Streamlit для веб-интерфейса
+  streamlit:
+    build: .  # Тот же образ
+    ports:
+      - "8501:8501"  # Порт для доступа к UI (http://localhost:8501)
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0  # Запуск Streamlit
+    depends_on:
+      - api  # Запускается после API
+    environment:
+      - API_URL=http://api:8001  # Для обращения к API из Streamlit
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Для интеграции с MLflow
+    volumes:
+      - .:/app  # Монтирует проект
+      - /app/__pycache__
+
+volumes:
+  mlflow_data:  # Volume для данных MLflow (чтобы не терялись при перезапуске)
+
+app.py
+from fastapi import FastAPI, HTTPException
+import joblib
+import pandas as pd
+from pydantic import BaseModel, Field
+import logging
+import os
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="NPV Prediction API", version="1.0")
+
+# Загрузка модели и энкодера из DVC-версионированных файлов
+try:
+    model = joblib.load('models/model.joblib')
+    encoder = joblib.load('models/encoder.joblib')
+    feature_columns = joblib.load('models/feature_columns.joblib')
+    logger.info("Модель и энкодер успешно загружены")
+except Exception as e:
+    logger.error(f"Ошибка загрузки модели: {e}")
+    # Модель может быть не обучена - это нормально для разработки
+    model = None
+    encoder = None
+    feature_columns = None
+
+# Модель входных данных
+class InputData(BaseModel):
+    Heff: float = Field(..., ge=0, description="Эффективная толщина")
+    Perm: float = Field(..., ge=0, description="Проницаемость")
+    Sg: float = Field(..., ge=0, le=1, description="Газонасыщенность")
+    L_hor: float = Field(..., ge=0, description="Горизонтальная длина")
+    GS: str = Field(..., description="Тип ствола")
+    temp: float = Field(..., ge=0, description="Темп падения")
+    C5: float = Field(..., ge=0, description="Содержание C5")
+    GRP: int = Field(..., ge=0, description="ГРП")
+    nGS: int = Field(..., ge=0, description="Количество стволов")
+
+@app.get("/")
+async def root():
+    return {"message": "NPV Prediction API", "status": "active", "model_loaded": model is not None}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "model_loaded": model is not None}
+
+@app.post("/predict")
+async def predict(data: InputData):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена. Запустите пайплайн обучения.")
+    
+    try:
+        input_dict = data.dict()
+        
+        # Создаем DataFrame с правильным порядком изначально
+        numeric_data = {k: v for k, v in input_dict.items() if k != 'GS'}
+        
+        # Кодируем GS
+        gs_encoded = encoder.transform([[input_dict['GS']]])
+        gs_columns = encoder.get_feature_names_out(['GS'])
+        gs_data = dict(zip(gs_columns, gs_encoded[0]))
+        
+        # Объединяем данные
+        all_data = {**numeric_data, **gs_data}
+        
+        # Создаем DataFrame с правильным порядком
+        input_processed = pd.DataFrame([all_data])[feature_columns]
+        
+        # Предсказание
+        prediction = model.predict(input_processed)
+        result = float(prediction[0])
+        
+        return {"predicted_NPV": round(result, 2), "status": "success"}
+        
+    except Exception as e:
+        logger.error(f"Ошибка предсказания: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка предсказания: {str(e)}")
+
+@app.get("/model_info")
+async def model_info():
+    """Информация о загруженной модели"""
+    try:
+        features = []
+        if hasattr(model, 'feature_names_in_'):
+            features = model.feature_names_in_.tolist()
+        elif hasattr(model, 'get_booster'):
+            features = model.get_booster().feature_names
+        
+        return {
+            "model_type": type(model).__name__,
+            "n_features": len(features),
+            "features": features
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
